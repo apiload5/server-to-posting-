@@ -1,26 +1,23 @@
-# File: .github/workflows/autopost.yml
+name: Scheduled Auto Blogger (3 Hour Cycle)
 
-name: 'Scheduled Auto Blogger'
-
-# Yeh workflow har 3 ghante mein ek baar chalega (Minutes, Hour, Day-of-Month, Month, Day-of-Week)
 on:
   schedule:
-    # Har 3 ghante mein chalao (0 */3 * * *)
-    - cron: '0 */3 * * *'
-  # Manual testing ke liye, aap isse GitHub interface se bhi chala sakte hain
-  workflow_dispatch:
+    # CRON FIX: Har 3 ghante mein chalao (0 */3 * * *). Yeh token quota ke liye safe hai.
+    - cron: "0 */3 * * *"   
+  workflow_dispatch:        # Manual run karne ka option.
+  push:
+    branches: [ "main" ]    # Code push hone par bhi chalao (taaki dependencies update ho sakein).
 
 jobs:
-  autopost:
+  run-autopost:
     runs-on: ubuntu-latest
-    timeout-minutes: 5 # Agar script 5 minute se zyada chala toh band ho jayega
+    timeout-minutes: 5 # Time limit 5 minute.
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js Environment
-        # Aapke code ke liye Node.js ka version set karein
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -29,21 +26,21 @@ jobs:
         run: npm install
 
       - name: Run Auto Post Script
-        # Saare zaroori environment variables (Secrets) yahan pass kiye jayenge
+        # Seedhe app.js file ko chalao
+        run: node app.js
         env:
-          # OpenAI API Key (Token kharch yahan se hoga)
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # --- Safety and Control Settings ---
+          MAX_ITEMS_PER_RUN: 1  # CONFIRMED: Sirf 1 item post hoga har run mein.
+          POST_INTERVAL_CRON: "0 */3 * * *" # Confirmed: Cron har 3 ghante.
+          MODE: 'once' # GitHub Actions ke liye zaroori, taaki run poora ho jaaye.
           
-          # Blogger/Google OAuth Secrets
+          # --- Authentication and Data Secrets ---
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
           BLOG_ID: ${{ secrets.BLOG_ID }}
-          
-          # App Settings (Code mein set kiye gaye hain, yahan override kar sakte hain)
           GSMARENA_RSS: ${{ secrets.GSMARENA_RSS }}
-          MAX_ITEMS_PER_RUN: 1 # Confirming the 1-item limit for safety
-          MODE: once # Workflow mein har run ke baad script ko band kar dega
-        
-        # Script ko chalao
-        run: node app.js
+          # Aap Engadget RSS use kar rahe hain, to agar aapne Secret ka naam ENGADGET_RSS rakha hai, to use badal dein.
+          # Agar aapka feed variable ka naam kuch aur hai, to use yahan update karein.
+          
