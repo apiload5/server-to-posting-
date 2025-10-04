@@ -1,5 +1,5 @@
 {
-  "name": "gsm2blog",
+  "name": "server-to-posting",
   "version": "1.0.0",
   "type": "module",
   "main": "app.js",
