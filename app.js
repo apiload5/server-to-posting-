@@ -24,7 +24,9 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
 const BLOG_ID = process.env.BLOG_ID;
 
-const GSMARENA_RSS = process.env.GSMARENA_RSS;
+// 🔑 FIX: GSMARENA_RSS hi rehne den. Iska variable hum workflows mein set karenge.
+const GSMARENA_RSS = process.env.GSMARENA_RSS; 
+
 // CRON INTERVAL SET TO A SAFE 3-HOUR INTERVAL FOR TRIAL (8 RUNS/DAY)
 const POST_INTERVAL_CRON = process.env.POST_INTERVAL_CRON || '0 */3 * * *';
 // MAX ITEMS SET TO 1 TO AVOID BURSTING THE TRIAL LIMIT
@@ -132,7 +134,7 @@ Rules for SEO and Originality:
 4.  **Formatting:** Use standard HTML formatting (p, strong, ul, ol).
 5.  **Clean Output:** **DO NOT** include any links (hyperlinks/<a> tags). **DO NOT** include any introductory or concluding remarks outside the main article body.
 6.  **Language:** Write in professional, clear English only.
-7.  **Output Format:** Return **ONLY** the final HTML content for the article body.`;
+7.  **Output Format:** Return **ONLY** the final HTML content for the article body. **DO NOT wrap the content in markdown code blocks (like \`\`\`html).**`; // 🔑 PROMPT UPDATE: Added instruction to prevent code blocks
 
   try {
     const completion = await openai.chat.completions.create({
@@ -142,9 +144,22 @@ Rules for SEO and Originality:
     });
     let text = completion.choices?.[0]?.message?.content || '';
 
+    // 🔑 NEW FIX 1: Remove Markdown Code Block start (```html, ```markdown, etc.)
+    // Shuruat se (^) triple backticks aur uske baad aane waale text ko hatao
+    text = text.replace(/^```(\w+\s*)?\n*/i, ''); 
+
+    // 🔑 NEW FIX 2: Aakhir se Markdown Code Block end (```) ko hatao
+    // String ke aakhir ($) se triple backticks aur usse pehle aane waali newline/spaces ko hatao
+    text = text.replace(/\n*```$/i, ''); 
+    
     // Existing cleanup steps (important for safety)
-    text = text.replace(/\.\.\.\s*html/gi, '');
-    text = text.replace(/<a [^>]*>(.*?)<\/a>/gi, '$1');
+    text = text.replace(/\.\.\.\s*html/gi, ''); // Removes "... html"
+    text = text.replace(/<a [^>]*>(.*?)<\/a>/gi, '$1'); // Removes <a> tags but keeps the text inside
+
+    // FINAL CLEANUP: Shuruat se koi bhi fuzool characters ya spaces hatao
+    text = text.trim(); 
+    text = text.replace(/^(\.|\s|html)+/i, ''); 
+    text = text.trim(); 
 
     return text;
   } catch (err) {
@@ -225,6 +240,11 @@ async function createBloggerPost({ title, htmlContent, labels = [] }) {
 async function processOnce() {
   try {
     log('Fetching RSS:', GSMARENA_RSS);
+    if (!GSMARENA_RSS) { // FIX: GSMARENA_RSS check
+        log('ERROR: GSMARENA_RSS environment variable is undefined or empty. Please check secrets/workflow.');
+        return;
+    }
+    
     const feed = await parser.parseURL(GSMARENA_RSS);
     if (!feed?.items?.length) {
       log('No items in feed.');
@@ -321,3 +341,4 @@ async function start() {
 }
 
 start().catch(e => { log('Fatal error:', e?.message || e); process.exit(1); });
+           
