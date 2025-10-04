@@ -24,9 +24,7 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
 const BLOG_ID = process.env.BLOG_ID;
 
-// 🔑 FIX: GSMARENA_RSS hi rehne den. Iska variable hum workflows mein set karenge.
-const GSMARENA_RSS = process.env.GSMARENA_RSS; 
-
+const GSMARENA_RSS = process.env.GSMARENA_RSS;
 // CRON INTERVAL SET TO A SAFE 3-HOUR INTERVAL FOR TRIAL (8 RUNS/DAY)
 const POST_INTERVAL_CRON = process.env.POST_INTERVAL_CRON || '0 */3 * * *';
 // MAX ITEMS SET TO 1 TO AVOID BURSTING THE TRIAL LIMIT
@@ -106,6 +104,7 @@ function extractOgImage(html) {
   if (!html) return null;
   const m = html.match(/property=["']og:image["']\s*content=["']([^"']+)["']/i) || html.match(/<meta[^>]*name=["']og:image["'][^>]*content=["']([^"']+)["']/i);
   if (m) return m[1];
+  if (m) return m[1];
   return null;
 }
 
@@ -123,6 +122,35 @@ function extractMainArticle(html) {
   return null;
 }
 
+// === NEW FUNCTION: REWRITE TITLE FOR UNIQUENESS ===
+async function rewriteTitleWithOpenAI(originalTitle) {
+  const prompt = `You are a professional SEO headline writer. Rewrite the following news article title into a **highly unique, click-worthy, and SEO-optimized headline (Title)**. The new title must convey the same meaning but must be completely different phrasing.
+  
+  Original Title: "${originalTitle}"
+  
+  Return **ONLY** the new headline text, with no quotation marks or extra text.`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 50
+    });
+    let newTitle = completion.choices?.[0]?.message?.content || originalTitle;
+    
+    // Cleanup any quotation marks or leading/trailing spaces
+    newTitle = newTitle.trim().replace(/^["']|["']$/g, '');
+    
+    // Fallback in case of failure
+    return newTitle.length > 5 ? newTitle : originalTitle;
+
+  } catch (err) {
+    log('OpenAI Title rewrite error:', err?.message || err);
+    return originalTitle;
+  }
+}
+// ================================================
+
 async function rewriteWithOpenAI({ title, snippet, content }) {
   // UPDATED PROMPT: Focuses on SEO, Uniqueness, Length, and Clean HTML output.
   const prompt = `You are a highly skilled SEO Content Writer. Rewrite the following article into a **unique, high-quality, and comprehensive English news post** for a professional tech blog.
@@ -134,7 +162,7 @@ Rules for SEO and Originality:
 4.  **Formatting:** Use standard HTML formatting (p, strong, ul, ol).
 5.  **Clean Output:** **DO NOT** include any links (hyperlinks/<a> tags). **DO NOT** include any introductory or concluding remarks outside the main article body.
 6.  **Language:** Write in professional, clear English only.
-7.  **Output Format:** Return **ONLY** the final HTML content for the article body. **DO NOT wrap the content in markdown code blocks (like \`\`\`html).**`; // 🔑 PROMPT UPDATE: Added instruction to prevent code blocks
+7.  **Output Format:** Return **ONLY** the final HTML content for the article body. DO NOT wrap the output in markdown code blocks (\`\`\`html).`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -144,22 +172,15 @@ Rules for SEO and Originality:
     });
     let text = completion.choices?.[0]?.message?.content || '';
 
-    // 🔑 NEW FIX 1: Remove Markdown Code Block start (```html, ```markdown, etc.)
-    // Shuruat se (^) triple backticks aur uske baad aane waale text ko hatao
-    text = text.replace(/^```(\w+\s*)?\n*/i, ''); 
+    // FIX 1: Remove Markdown Code Block start (```html, ```markdown, etc.)
+    text = text.replace(/^```(\w+\s*)?\n*/i, '').trim();
 
-    // 🔑 NEW FIX 2: Aakhir se Markdown Code Block end (```) ko hatao
-    // String ke aakhir ($) se triple backticks aur usse pehle aane waali newline/spaces ko hatao
-    text = text.replace(/\n*```$/i, ''); 
+    // FIX 2: Remove Markdown Code Block end (```)
+    text = text.replace(/\n*```$/i, '').trim(); 
     
-    // Existing cleanup steps (important for safety)
-    text = text.replace(/\.\.\.\s*html/gi, ''); // Removes "... html"
-    text = text.replace(/<a [^>]*>(.*?)<\/a>/gi, '$1'); // Removes <a> tags but keeps the text inside
-
-    // FINAL CLEANUP: Shuruat se koi bhi fuzool characters ya spaces hatao
-    text = text.trim(); 
-    text = text.replace(/^(\.|\s|html)+/i, ''); 
-    text = text.trim(); 
+    // FIX 3: Remove unwanted ...html, hyperlinks, and any leading dots/html strings.
+    text = text.replace(/<a [^>]*>(.*?)<\/a>/gi, '$1');
+    text = text.replace(/^(\.|\s|html)+/i, '').trim(); 
 
     return text;
   } catch (err) {
@@ -240,11 +261,6 @@ async function createBloggerPost({ title, htmlContent, labels = [] }) {
 async function processOnce() {
   try {
     log('Fetching RSS:', GSMARENA_RSS);
-    if (!GSMARENA_RSS) { // FIX: GSMARENA_RSS check
-        log('ERROR: GSMARENA_RSS environment variable is undefined or empty. Please check secrets/workflow.');
-        return;
-    }
-    
     const feed = await parser.parseURL(GSMARENA_RSS);
     if (!feed?.items?.length) {
       log('No items in feed.');
@@ -255,14 +271,20 @@ async function processOnce() {
     for (const item of items) {
       const guid = item.guid || item.link || item.id || item.title;
       const link = item.link;
-      const title = item.title || 'Untitled';
-
+      const originalTitle = item.title || 'Untitled';
+      
+      // Use the original link for checking if posted
       if (hasBeenPosted(guid) || hasBeenPosted(link)) {
-        log('Already posted:', title);
+        log('Already posted:', originalTitle);
         continue;
       }
 
-      log('Processing new item:', title);
+      log('Processing new item:', originalTitle);
+      
+      // === NEW STEP: REWRITE TITLE FOR UNIQUENESS ===
+      const uniqueTitle = await rewriteTitleWithOpenAI(originalTitle);
+      log('New unique title generated:', uniqueTitle);
+      // ==============================================
 
       let snippet = item.contentSnippet || '';
       let fullContent = item['content:encoded'] || item.content || snippet;
@@ -280,33 +302,35 @@ async function processOnce() {
 
       let rewrittenHtml = '';
       try {
-        rewrittenHtml = await rewriteWithOpenAI({ title, snippet, content: fullContent });
+        rewrittenHtml = await rewriteWithOpenAI({ title: uniqueTitle, snippet, content: fullContent });
       } catch (e) {
-        log('OpenAI rewrite failed:', title);
+        log('OpenAI rewrite failed:', uniqueTitle);
         continue;
       }
 
       let finalHtml = '';
       if (imageUrl) {
-        const altText = await generateImageAlt(title, snippet, fullContent);
-        const titleText = await generateImageTitle(title, snippet, fullContent);
+        const altText = await generateImageAlt(uniqueTitle, snippet, fullContent);
+        const titleText = await generateImageTitle(uniqueTitle, snippet, fullContent);
         // Image tag added here
         finalHtml += `<p><img src="${imageUrl}" alt="${escapeHtml(altText)}" title="${escapeHtml(titleText)}" style="max-width:100%;height:auto" /></p>\n`;
       }
       finalHtml += rewrittenHtml;
 
-      const tags = await generateTags(title, snippet, fullContent);
+      const tags = await generateTags(uniqueTitle, snippet, fullContent);
 
       let posted;
       try {
-        posted = await createBloggerPost({ title, htmlContent: finalHtml, labels: tags });
+        // Use the uniqueTitle for posting
+        posted = await createBloggerPost({ title: uniqueTitle, htmlContent: finalHtml, labels: tags });
       } catch (e) {
-        log('Failed to post to Blogger for:', title);
+        log('Failed to post to Blogger for:', uniqueTitle);
         continue;
       }
 
       log('Posted to Blogger:', posted.url || posted.id || '(no url returned)');
-      markPosted({ guid, link, title, published_at: item.pubDate || item.isoDate || null });
+      // Mark original GUID/link as posted to prevent duplication
+      markPosted({ guid, link, title: originalTitle, published_at: item.pubDate || item.isoDate || null });
       await sleep(2000);
 
       if (MODE === 'once') {
@@ -341,4 +365,4 @@ async function start() {
 }
 
 start().catch(e => { log('Fatal error:', e?.message || e); process.exit(1); });
-           
+                                   
