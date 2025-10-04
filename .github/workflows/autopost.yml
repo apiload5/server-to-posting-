@@ -1,46 +1,37 @@
-name: Scheduled Auto Blogger (3 Hour Cycle)
+name: Auto Blogger Poster
 
 on:
   schedule:
-    # CRON FIX: Har 3 ghante mein chalao (0 */3 * * *). Yeh token quota ke liye safe hai.
-    - cron: "0 */3 * * *"   
-  workflow_dispatch:        # Manual run karne ka option.
+    - cron: "0 */3 * * *"   # har 5 ghante chalega
+  workflow_dispatch:        # manually run karne ka option bhi
   push:
-    branches: [ "main" ]    # Code push hone par bhi chalao (taaki dependencies update ho sakein).
+    branches: [ "main" ]    # push hone par bhi chala
 
 jobs:
-  run-autopost:
+  run-backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 5 # Time limit 5 minute.
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js Environment
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: npm install
 
-      - name: Run Auto Post Script
-        # Seedhe app.js file ko chalao
-        run: node app.js
+      - name: Run app
+        run: npm start
         env:
-          # --- Safety and Control Settings ---
-          MAX_ITEMS_PER_RUN: 1  # CONFIRMED: Sirf 1 item post hoga har run mein.
-          POST_INTERVAL_CRON: "0 */3 * * *" # Confirmed: Cron har 3 ghante.
-          MODE: 'once' # GitHub Actions ke liye zaroori, taaki run poora ho jaaye.
-          
-          # --- Authentication and Data Secrets ---
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           CLIENT_ID: ${{ secrets.CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
           BLOG_ID: ${{ secrets.BLOG_ID }}
-          GSMARENA_RSS: ${{ secrets.GSMARENA_RSS }}
-          # Aap Engadget RSS use kar rahe hain, to agar aapne Secret ka naam ENGADGET_RSS rakha hai, to use badal dein.
-          # Agar aapka feed variable ka naam kuch aur hai, to use yahan update karein.
-          
+          RSS_FEEDS_TO_PROCESS: ${{ secrets.RSS_FEEDS_TO_PROCESS }}
+          POST_INTERVAL_CRON: ${{ secrets.POST_INTERVAL_CRON }}
+          MODE: ${{ secrets.MODE || 'once' }}
