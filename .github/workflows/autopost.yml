@@ -34,4 +34,4 @@ jobs:
           BLOG_ID: ${{ secrets.BLOG_ID }}
           RSS_FEEDS_TO_PROCESS: ${{ https://www.engadget.com/rss.xml }}
           POST_INTERVAL_CRON: ${{ secrets.POST_INTERVAL_CRON }}
-          MODE: ${{ secrets.MODE || 'once' }}
+          MODE: ${{ secrets.MODE || 'once' }}.            MODE: ${{ secrets.MODE || 'once' }}          MODE: ${{ secrets.MODE || 'once' }}
