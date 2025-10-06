@@ -32,6 +32,6 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
           BLOG_ID: ${{ secrets.BLOG_ID }}
-          RSS_FEEDS_TO_PROCESS: ${{ secrets.GSMARENA_RSS }}
+          GSMARENA_RSS: ${{ secrets.GSMARENA_RSS }}
           POST_INTERVAL_CRON: ${{ secrets.POST_INTERVAL_CRON }}
           MODE: ${{ secrets.MODE || 'once' }}.          
